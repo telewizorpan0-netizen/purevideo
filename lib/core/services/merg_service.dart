@@ -1,4 +1,6 @@
+import 'package:flutter/material.dart';
 import 'package:purevideo/data/models/movie_model.dart';
+import 'package:diacritic/diacritic.dart';
 
 class MergeService {
   // final List<MovieDetailsModel> _movieDetails = [];
@@ -38,6 +40,7 @@ class MergeService {
 
     for (final movie in toAdd) {
       final normalizedTitle = _normalizeTitle(movie.title);
+      debugPrint('Normalized Title: $normalizedTitle');
 
       final existingMovieIndex = existingMovies.indexWhere(
         (existingMovie) =>
@@ -66,20 +69,13 @@ class MergeService {
 
   List<MovieModel> get getMovies => _movies;
 
-  List<MovieModel> searchMovies(String query) {
-    final normalizedQuery = _normalizeTitle(query);
-    return _movies.where((movie) {
-      final movieTitle = _normalizeTitle(movie.services.first.title);
-      return movieTitle.contains(normalizedQuery);
-    }).toList();
-  }
-
   String _normalizeTitle(String title) {
-    return title
+    return removeDiacritics(title
         .toLowerCase()
         .trim()
         .replaceAll(RegExp(r'[^\w\s]'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+        .replaceAll(' ', '')
+        .trim());
   }
 }

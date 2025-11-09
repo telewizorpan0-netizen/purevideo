@@ -9,6 +9,7 @@ class FilmwebInfoRepository {
 
   Future<List<FilmwebSearchResultModel>> searchMovie(
       String query, bool isSeries) async {
+    return []; // Temporary disable Filmweb search
     final response = await _dio.get('api/v1/search', queryParameters: {
       'query': query.toLowerCase(),
       'pageSize': 25,

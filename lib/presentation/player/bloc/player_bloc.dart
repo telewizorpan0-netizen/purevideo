@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
@@ -524,6 +525,8 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
                   streamType: StreamType.buffered,
                   contentType: 'videos/mp4',
                   contentId: state.selectedSource!.url,
+                  customDataAsJson:
+                      jsonEncode({'headers': state.selectedSource!.headers}),
                   mediaMetadata: MediaMetadata(
                       mediaType: MediaType.movie,
                       strings: _movie!.isSeries

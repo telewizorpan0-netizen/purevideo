@@ -237,7 +237,7 @@ class MovieDetailsModelAdapter extends TypeAdapter<MovieDetailsModel> {
     };
     return MovieDetailsModel(
       services: (fields[0] as List).cast<ServiceMovieDetailsModel>(),
-      filmwebInfo: fields[1] as FilmwebPreviewModel,
+      filmwebInfo: fields[1] as FilmwebPreviewModel?,
     );
   }
 
