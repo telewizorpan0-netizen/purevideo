@@ -2,7 +2,7 @@ import 'package:fast_cached_network_image/fast_cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:purevideo/data/models/movie_model.dart';
+import 'package:purevideo/data/models/filmweb_model.dart';
 import 'package:purevideo/presentation/search/bloc/search_block.dart';
 import 'package:purevideo/presentation/search/bloc/search_event.dart';
 import 'package:purevideo/presentation/search/bloc/search_state.dart';
@@ -23,7 +23,7 @@ class SearchScreen extends StatelessWidget {
 }
 
 class MovieListItem extends StatelessWidget {
-  final MovieModel movie;
+  final FilmwebPreviewModel movie;
 
   const MovieListItem({super.key, required this.movie});
 
@@ -31,15 +31,13 @@ class MovieListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => context.pushNamed('movie_details',
-          pathParameters: {
-            'title': movie.title,
-          },
+          pathParameters: {'title': movie.title},
+          queryParameters: {'filmweb': 'true'},
           extra: movie),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: FastCachedImage(
-          url: movie.imageUrl,
-          headers: movie.imageHeaders,
+          url: movie.posterUrl,
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) => Container(
             decoration: BoxDecoration(

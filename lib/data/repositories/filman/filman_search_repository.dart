@@ -39,7 +39,7 @@ class FilmanSearchRepository implements SearchRepository {
     await _prepareDio();
 
     final response = await _dio!.get(
-      '/item',
+      '/search',
       queryParameters: {'phrase': query},
     );
 

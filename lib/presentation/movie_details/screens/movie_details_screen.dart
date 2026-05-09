@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purevideo/core/services/watched_service.dart';
+import 'package:purevideo/data/models/filmweb_model.dart';
 import 'package:purevideo/data/models/movie_model.dart';
 import 'package:purevideo/di/injection_container.dart';
 import 'package:purevideo/presentation/movie_details/bloc/movie_details_bloc.dart';
@@ -12,11 +13,13 @@ import 'package:purevideo/presentation/global/widgets/error_view.dart';
 import 'package:fast_cached_network_image/fast_cached_network_image.dart';
 
 class MovieDetailsScreen extends StatelessWidget {
-  final MovieModel movie;
+  final MovieModel? movie;
+  final FilmwebPreviewModel? filmwebData;
 
   const MovieDetailsScreen({
     super.key,
-    required this.movie,
+    this.movie,
+    this.filmwebData,
   });
 
   @override
@@ -24,7 +27,9 @@ class MovieDetailsScreen extends StatelessWidget {
     return BlocProvider(
       create: (context) => MovieDetailsBloc()
         ..add(
-          LoadMovieDetails(movie: movie),
+          movie != null
+              ? LoadMovieDetails(movie: movie!)
+              : LoadFilmwebMovieDetails(movie: filmwebData!),
         ),
       child: const MovieDetailsView(),
     );

@@ -1,7 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_cast_framework/cast.dart';
 import 'package:pip/pip.dart';
-import 'package:purevideo/core/video_hosts/video_host_scraper.dart';
+import 'package:purevideo/data/repositories/video_source_repository.dart';
 
 enum SeekDirection { forward, backward }
 

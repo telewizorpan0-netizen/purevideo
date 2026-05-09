@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_cast_framework/cast.dart';
 import 'package:get_it/get_it.dart';
 import 'package:purevideo/core/services/media_service.dart';
@@ -6,9 +7,9 @@ import 'package:purevideo/core/services/settings_service.dart';
 import 'package:purevideo/core/services/watched_service.dart';
 import 'package:purevideo/core/services/captcha_service.dart';
 import 'package:purevideo/core/services/webview_service.dart';
+import 'package:purevideo/core/services/resolve_url_service.dart';
 import 'package:purevideo/core/utils/global_context.dart';
 import 'package:purevideo/core/utils/supported_enum.dart';
-import 'package:purevideo/core/video_hosts/video_host_registry.dart';
 import 'package:purevideo/data/repositories/ekino/ekino_movie_repository.dart';
 import 'package:purevideo/data/repositories/filman/filman_search_repository.dart';
 import 'package:purevideo/data/repositories/ekino/ekino_search_repository.dart';
@@ -23,14 +24,16 @@ import 'package:purevideo/data/repositories/auth_repository.dart';
 import 'package:purevideo/data/repositories/filman/filman_auth_repository.dart';
 import 'package:purevideo/data/repositories/filman/filman_movie_repository.dart';
 import 'package:purevideo/data/repositories/movie_repository.dart';
-import 'package:purevideo/di/video_hosts_container.dart';
 
 final getIt = GetIt.instance;
 
 void setupInjection() {
-  final videoHostRegistry = VideoHostRegistry();
-  getIt.registerSingleton<VideoHostRegistry>(videoHostRegistry);
-  VideoHostsContainer.registerVideoScrapers(videoHostRegistry);
+  // Shared Dio instance for HTTP
+  final dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 30),
+    receiveTimeout: const Duration(seconds: 30),
+  ));
+  getIt.registerSingleton<Dio>(dio);
 
   getIt.registerSingleton<FlutterCastFramework>(
     FlutterCastFramework.create(['urn:x-cast:majusss-purevideo']),
@@ -39,6 +42,7 @@ void setupInjection() {
   getIt.registerFactory<CaptchaService>(() => CaptchaService());
   getIt.registerFactory<WebViewService>(() => WebViewService());
 
+  getIt.registerSingleton<ResolveUrlService>(ResolveUrlService(dio));
   getIt.registerSingleton<VideoSourceRepository>(VideoSourceRepository());
 
   getIt.registerSingleton<MergeService>(MergeService());

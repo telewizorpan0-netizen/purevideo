@@ -54,7 +54,7 @@ extension SupportedServiceExtension on SupportedService {
   bool get canBeAnonymous => switch (this) {
         SupportedService.filman => false,
         SupportedService.obejrzyjto => true,
-        SupportedService.ekino => true,
+        SupportedService.ekino => false,
       };
 
   String get baseUrl => switch (this) {

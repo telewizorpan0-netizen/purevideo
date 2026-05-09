@@ -1,0 +1,7 @@
+flask
+six
+requests
+certifi
+chardet
+idna
+urllib3

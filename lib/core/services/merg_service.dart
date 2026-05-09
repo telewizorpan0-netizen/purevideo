@@ -5,6 +5,10 @@ import 'package:diacritic/diacritic.dart';
 class MergeService {
   // final List<MovieDetailsModel> _movieDetails = [];
   final List<MovieModel> _movies = [];
+  
+  // Pre-compiled regex patterns for better performance
+  static final _nonWordRegex = RegExp(r'[^\w\s]');
+  static final _spacesRegex = RegExp(r'\s+');
 
   Future<void> addFromService(List<ServiceMovieModel> movies) async {
     if (movies.isEmpty) return;
@@ -73,8 +77,8 @@ class MergeService {
     return removeDiacritics(title
         .toLowerCase()
         .trim()
-        .replaceAll(RegExp(r'[^\w\s]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(_nonWordRegex, '')
+        .replaceAll(_spacesRegex, ' ')
         .replaceAll(' ', '')
         .trim());
   }

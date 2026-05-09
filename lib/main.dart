@@ -15,6 +15,7 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:fast_cached_network_image/fast_cached_network_image.dart';
 import 'dart:ui';
+import 'package:serious_python/serious_python.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +61,12 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+  SeriousPython.run('app/app.zip').then((log) {
+    debugPrint('Python log: $log');
+  }).catchError((error) {
+    debugPrint('Error executing Python code: $error');
+  });
 
   runApp(PureVideoApp());
 }

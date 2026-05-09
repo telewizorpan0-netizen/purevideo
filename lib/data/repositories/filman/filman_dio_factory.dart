@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:purevideo/core/error/exceptions.dart';
 import 'package:purevideo/core/services/webview_service.dart';
 import 'package:purevideo/core/utils/supported_enum.dart';
@@ -79,6 +80,8 @@ class FilmanDioFactory {
                 'https://filman.cc/logowanie',
               ) ==
               true) {
+            debugPrint(
+                'Error while fetching: ${response.requestOptions.uri} with cookies: ${response.requestOptions.headers}');
             throw const UnauthorizedException();
           }
           return handler.next(response);

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purevideo/core/utils/global_context.dart';
+import 'package:purevideo/data/models/filmweb_model.dart';
 import 'package:purevideo/di/injection_container.dart';
 import 'package:purevideo/presentation/settings/screens/about_screen.dart';
 import 'package:purevideo/presentation/global/screens/main_screen.dart';
 import 'package:purevideo/presentation/movies/screens/home_screen.dart';
 import 'package:purevideo/presentation/search/screens/search_screen.dart';
-import 'package:purevideo/presentation/categories/screens/categories_screen.dart';
-import 'package:purevideo/presentation/my_list/screens/my_list_screen.dart';
+import 'package:purevideo/presentation/watched/screens/watched_movies_screen.dart';
 import 'package:purevideo/presentation/settings/screens/settings_screen.dart';
 import 'package:purevideo/presentation/accounts/screens/accounts_screen.dart';
 import 'package:purevideo/presentation/accounts/screens/login_screen.dart';
@@ -60,10 +60,13 @@ final GoRouter router = GoRouter(
       path: '/movie/:title',
       name: 'movie_details',
       pageBuilder: (context, state) {
+        debugPrint(
+            'Navigating to movie details with ${state.uri.queryParameters} and extra: ${state.extra}');
         return NoTransitionPage(
-          child: MovieDetailsScreen(
-            movie: state.extra as MovieModel,
-          ),
+          child: state.uri.queryParameters['filmweb'] == 'true'
+              ? MovieDetailsScreen(
+                  filmwebData: state.extra as FilmwebPreviewModel)
+              : MovieDetailsScreen(movie: state.extra as MovieModel),
         );
       },
     ),
@@ -121,21 +124,10 @@ final GoRouter router = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/categories',
-              name: 'categories',
+              path: '/watched',
+              name: 'watched',
               pageBuilder: (context, state) {
-                return const NoTransitionPage(child: CategoriesScreen());
-              },
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/my-list',
-              name: 'my-list',
-              pageBuilder: (context, state) {
-                return const NoTransitionPage(child: MyListScreen());
+                return const NoTransitionPage(child: WatchedMoviesScreen());
               },
             ),
           ],

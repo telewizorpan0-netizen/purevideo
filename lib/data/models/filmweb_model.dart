@@ -15,12 +15,17 @@ class FilmwebSearchResultModel {
 
   factory FilmwebSearchResultModel.fromJson(Map<String, dynamic> json) {
     return FilmwebSearchResultModel(
-      id: json['id'],
-      type: json['type'],
+      id: json['id'] ?? 0,
+      type: json['type'] ?? '',
       matchedTitle: json['matchedTitle'],
       matchedName: json['matchedName'],
       matchedLang: json['matchedLang'],
     );
+  }
+
+  @override
+  String toString() {
+    return 'FilmwebSearchResultModel(id: $id, type: $type, matchedTitle: $matchedTitle, matchedName: $matchedName, matchedLang: $matchedLang)';
   }
 }
 
@@ -42,6 +47,7 @@ class FilmwebRatingModel {
 }
 
 class FilmwebPreviewModel {
+  final int id;
   final int year;
   final String plot;
   final String posterUrl;
@@ -49,6 +55,7 @@ class FilmwebPreviewModel {
   final String originalTitle;
 
   FilmwebPreviewModel({
+    required this.id,
     required this.year,
     required this.plot,
     required this.title,
@@ -56,14 +63,18 @@ class FilmwebPreviewModel {
     required this.originalTitle,
   });
 
-  factory FilmwebPreviewModel.fromJson(Map<String, dynamic> json) {
+  factory FilmwebPreviewModel.fromJson(
+      Map<String, dynamic> json, int filmwebId) {
     return FilmwebPreviewModel(
-      year: json['year'],
-      plot: json['plot']?['synopsis'],
-      title: json['title']?['title'],
-      posterUrl: 'https://fwcdn.pl/fpo${json['poster']['path']}'
-          .replaceAll('\$.jpg', '10.webp'),
-      originalTitle: json['originalTitle']?['title'],
+      id: filmwebId,
+      year: json['year'] ?? 0,
+      plot: json['plot']?['synopsis'] ?? '',
+      title: json['title']?['title'] ?? '',
+      posterUrl: json['poster']?['path'] != null
+          ? 'https://fwcdn.pl/fpo${json['poster']['path']}'
+              .replaceAll('\$.jpg', '10.webp')
+          : '',
+      originalTitle: json['originalTitle']?['title'] ?? '',
     );
   }
 

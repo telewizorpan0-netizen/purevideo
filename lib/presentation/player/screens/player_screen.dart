@@ -3,8 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:purevideo/core/video_hosts/video_host_scraper.dart';
 import 'package:purevideo/data/models/movie_model.dart';
+import 'package:purevideo/data/repositories/video_source_repository.dart';
 import 'package:purevideo/presentation/global/widgets/error_view.dart';
 import 'package:purevideo/presentation/player/bloc/player_bloc.dart';
 import 'package:purevideo/presentation/player/bloc/player_event.dart';
@@ -18,11 +18,11 @@ class PlayerScreen extends StatefulWidget {
   final int? episodeIndex;
 
   const PlayerScreen({
-    Key? key,
+    super.key,
     required this.movie,
     this.seasonIndex,
     this.episodeIndex,
-  }) : super(key: key);
+  });
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -54,7 +54,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+    // Add dispose event to save watched progress
+    // This is async but we don't wait - bloc will handle it
     _playerBloc.add(const DisposePlayer());
+
+    // Must call super.dispose() synchronously
+    // The DisposePlayer event will execute while the bloc is closing
     super.dispose();
   }
 

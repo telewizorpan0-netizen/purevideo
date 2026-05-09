@@ -46,3 +46,7 @@ app.*.map.json
 
 # ignore windows, its only for testing purposes
 /windows
+
+android/.project
+
+android/.settings/org.eclipse.buildship.core.prefs

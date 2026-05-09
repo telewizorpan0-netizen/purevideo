@@ -1,9 +1,6 @@
-import 'dart:async';
 import 'package:fast_cached_network_image/fast_cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:purevideo/core/services/watched_service.dart';
-import 'package:purevideo/di/injection_container.dart';
 import 'package:purevideo/presentation/movies/bloc/movies_bloc.dart';
 import 'package:purevideo/presentation/movies/bloc/movies_event.dart';
 import 'package:purevideo/presentation/movies/bloc/movies_state.dart';
@@ -55,29 +52,17 @@ class MovieListItem extends StatelessWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final WatchedService _watchedService = getIt<WatchedService>();
-  StreamSubscription? _watchedSubscription;
   late MoviesBloc _moviesBloc;
 
   @override
   void initState() {
     super.initState();
     _moviesBloc = MoviesBloc();
-    _setupWatchedListener();
   }
 
   @override
   void dispose() {
-    _watchedSubscription?.cancel();
     super.dispose();
-  }
-
-  void _setupWatchedListener() {
-    _watchedSubscription = _watchedService.watchedStream.listen((watchedList) {
-      if (mounted) {
-        _moviesBloc.add(LoadMoviesRequested());
-      }
-    });
   }
 
   @override
@@ -112,22 +97,27 @@ class _HomeScreenState extends State<HomeScreen> {
               return RefreshIndicator(
                 onRefresh: () async =>
                     context.read<MoviesBloc>().add(LoadMoviesRequested()),
-                child: SingleChildScrollView(
-                  child: GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      childAspectRatio: 0.67,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
+                child: CustomScrollView(
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.all(8),
+                      sliver: SliverGrid(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          childAspectRatio: 0.67,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            return MovieListItem(movie: state.movies[index]);
+                          },
+                          childCount: state.movies.length,
+                        ),
+                      ),
                     ),
-                    itemCount: state.movies.length,
-                    itemBuilder: (context, index) {
-                      return MovieListItem(movie: state.movies[index]);
-                    },
-                  ),
+                  ],
                 ),
               );
             }

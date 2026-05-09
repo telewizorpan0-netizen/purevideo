@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
-import 'package:purevideo/core/video_hosts/video_host_scraper.dart';
 import 'package:purevideo/data/models/movie_model.dart';
+import 'package:purevideo/data/repositories/video_source_repository.dart';
 
 abstract class PlayerEvent extends Equatable {
   const PlayerEvent();

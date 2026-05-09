@@ -7,21 +7,25 @@ class FilmwebInfoRepository {
 
   FilmwebInfoRepository();
 
-  Future<List<FilmwebSearchResultModel>> searchMovie(
-      String query, bool isSeries) async {
-    return []; // Temporary disable Filmweb search
+  Future<List<FilmwebPreviewModel>> searchMovie(String query,
+      {bool? isSeries}) async {
     final response = await _dio.get('api/v1/search', queryParameters: {
       'query': query.toLowerCase(),
       'pageSize': 25,
       'groupType': 'web'
     });
     if (response.statusCode == 200) {
-      final List<dynamic> results = response.data['searchHits'];
-      return results
+      final List<dynamic> results = response.data['searchHits'] ?? [];
+      final search = results
           .where((r) =>
-              r['id'] != null && r['type'] == (isSeries ? 'serial' : 'film'))
+              r['id'] != null &&
+              (isSeries == null
+                  ? ['serial', 'film'].contains(r['type'])
+                  : r['type'] == (isSeries ? 'serial' : 'film')))
           .map((item) => FilmwebSearchResultModel.fromJson(item))
           .toList();
+
+      return await Future.wait(search.map((result) => getPreview(result.id)));
     } else {
       throw Exception('Failed to load search results');
     }
@@ -30,12 +34,21 @@ class FilmwebInfoRepository {
   Future<FilmwebPreviewModel> getPreview(int filmwebId) async {
     final response = await _dio.get('api/v1/film/$filmwebId/preview');
     if (response.statusCode == 200) {
-      final preview = FilmwebPreviewModel.fromJson(response.data);
+      final preview = FilmwebPreviewModel.fromJson(response.data, filmwebId);
       return preview;
     } else {
       throw Exception('Failed to load preview');
     }
   }
+
+  // Future<MovieDetailsModel> getMovieDetails(MovieModel movie) async {
+  //   final response = await _dio.get('api/v1/film/$filmwebId/details');
+  //   if (response.statusCode == 200) {
+  //     return details;
+  //   } else {
+  //     throw Exception('Failed to load movie details');
+  //   }
+  // }
 
   Future<FilmwebRatingModel> getRating(int filmwebId) async {
     final response = await _dio.get('api/v1/film/$filmwebId/ratings');

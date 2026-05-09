@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:purevideo/core/utils/supported_enum.dart';
 import 'package:purevideo/data/models/link_model.dart';
 import 'package:purevideo/data/models/movie_model.dart';
@@ -34,7 +35,68 @@ class FilmanMovieRepository implements MovieRepository {
     }
   }
 
-  List<HostLink> _extractHostLinksFromDocument(dom.Document document) {
+  Future<String> _resolveTempUrl(String tempUrl) async {
+    try {
+      final response = await Dio().get(
+        tempUrl,
+        options: Options(
+          followRedirects: false,
+          validateStatus: (_) => true,
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 16; Pixel 8 Build/BP31.250610.004; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/138.0.7204.180 Mobile Safari/537.36',
+          },
+        ),
+      );
+
+      final String body = response.data.toString();
+
+      RegExp regExp = RegExp(r'''var _e\s*=\s*['"]([A-Za-z0-9+/=]+)['"]''');
+      RegExp regExpA = RegExp(r'''var _a\s*=\s*['"]([^'"]+)['"]''');
+      RegExp regExpB = RegExp(r'''var _b\s*=\s*['"]([^'"]+)['"]''');
+      RegExp regExpC = RegExp(r'''var _c\s*=\s*['"]([^'"]+)['"]''');
+
+      Match? matchE = regExp.firstMatch(body);
+      Match? matchA = regExpA.firstMatch(body);
+      Match? matchB = regExpB.firstMatch(body);
+      Match? matchC = regExpC.firstMatch(body);
+
+      if (matchE != null &&
+          matchA != null &&
+          matchB != null &&
+          matchC != null) {
+        String encoded = matchE.group(1)!;
+        String key = matchA.group(1)! + matchB.group(1)! + matchC.group(1)!;
+
+        debugPrint('Encoded found: $encoded');
+        debugPrint('Key: $key');
+
+        try {
+          List<int> raw = base64.decode(encoded);
+          List<int> keyBytes = key.codeUnits;
+          String result = String.fromCharCodes(
+            List.generate(
+                raw.length, (i) => raw[i] ^ keyBytes[i % keyBytes.length]),
+          );
+
+          debugPrint('Decoded URL: $result');
+          return result;
+        } catch (e) {
+          debugPrint('XOR decode failed: $e');
+          return '';
+        }
+      } else {
+        debugPrint('Could not find _e/_a/_b/_c in body');
+        return '';
+      }
+    } catch (e) {
+      debugPrint('Failed to resolve temp URL: $tempUrl - ${e.toString()}');
+      return tempUrl;
+    }
+  }
+
+  Future<List<HostLink>> _extractHostLinksFromDocument(
+      dom.Document document) async {
     final videoUrls = <HostLink>[];
 
     for (final row in document.querySelectorAll('tbody tr')) {
@@ -42,16 +104,21 @@ class FilmanMovieRepository implements MovieRepository {
 
       try {
         final decoded = base64Decode(
-            row.querySelector('td a')?.attributes['data-iframe'] ?? '');
-        link = (jsonDecode(utf8.decode(decoded))['src'] as String)
-            .split('/')
-            .take(7)
-            .join('/');
-      } catch (_) {
+            row.querySelector('a[data-iframe]')?.attributes['data-iframe'] ??
+                '');
+        link = (utf8.decode(decoded));
+      } catch (e) {
+        debugPrint(
+            'Failed to decode link: ${row.querySelector('a[data-iframe]')?.attributes['data-iframe']} - ${e.toString()}');
         link = null;
       }
 
       if (link == null || link.isEmpty == true) continue;
+
+      if (link.contains('tmp-url.pro')) {
+        link = await _resolveTempUrl(link);
+        debugPrint('Resolved temp URL to: $link');
+      }
 
       final tableData = row.querySelectorAll('td');
       if (tableData.length < 3) continue;
@@ -88,7 +155,7 @@ class FilmanMovieRepository implements MovieRepository {
                 .first
                 .trim() ??
             'Brak danych';
-        final imageUrl = poster?.querySelector('img')?.attributes['src'] ??
+        final imageUrl = poster?.querySelector('img')?.attributes['data-src'] ??
             'https://placehold.co/250x370/png?font=roboto&text=?';
         final link =
             poster?.querySelector('a')?.attributes['href'] ?? 'Brak danych';
@@ -116,7 +183,7 @@ class FilmanMovieRepository implements MovieRepository {
     final response = await _dio!.get(episodeUrl);
     final document = html.parse(response.data);
 
-    final hostLinks = _extractHostLinksFromDocument(document);
+    final hostLinks = await _extractHostLinksFromDocument(document);
 
     return hostLinks;
   }
@@ -132,10 +199,13 @@ class FilmanMovieRepository implements MovieRepository {
     final response = await _dio!.get(url);
     final document = html.parse(response.data);
 
-    final title = _prepareTitle(
-        document.querySelector('[itemprop="title"]')?.text.trim() ??
-            document.querySelector('h2')?.text.trim() ??
-            'Brak tytułu');
+    final title = _prepareTitle(document
+            .querySelector('[itemprop="name"]')
+            ?.text
+            .replaceAll(
+                document.querySelector('[itemprop="name"] *')?.text ?? '',
+                '') ??
+        'Brak tytułu');
     final description =
         document.querySelector('.description')?.text.trim() ?? '';
     final imageUrl =
@@ -186,7 +256,7 @@ class FilmanMovieRepository implements MovieRepository {
       );
     }
 
-    final videoUrls = _extractHostLinksFromDocument(document);
+    final videoUrls = await _extractHostLinksFromDocument(document);
 
     final movieModel = ServiceMovieDetailsModel(
       service: SupportedService.filman,

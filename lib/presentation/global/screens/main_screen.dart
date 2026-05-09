@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:purevideo/core/services/watched_service.dart';
+import 'package:purevideo/di/injection_container.dart';
 
 class MainScreen extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -11,7 +13,28 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      // Dispose resources when app is terminated
+      getIt<WatchedService>().dispose();
+      // getIt<VideoSourceRepository>().dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -67,25 +90,18 @@ class _CustomBottomNavigationBar extends StatelessWidget {
                   onTap: () => onTap(1),
                 ),
                 _NavBarItem(
-                  icon: Icons.category_outlined,
-                  activeIcon: Icons.category,
-                  label: 'Kategorie',
+                  icon: Icons.history_outlined,
+                  activeIcon: Icons.history,
+                  label: 'Oglądane',
                   isSelected: currentIndex == 2,
                   onTap: () => onTap(2),
-                ),
-                _NavBarItem(
-                  icon: Icons.bookmark_outline,
-                  activeIcon: Icons.bookmark,
-                  label: 'Moja lista',
-                  isSelected: currentIndex == 3,
-                  onTap: () => onTap(3),
                 ),
                 _NavBarItem(
                   icon: Icons.settings_outlined,
                   activeIcon: Icons.settings,
                   label: 'Ustawienia',
-                  isSelected: currentIndex == 4,
-                  onTap: () => onTap(4),
+                  isSelected: currentIndex == 3,
+                  onTap: () => onTap(3),
                 ),
               ],
             );

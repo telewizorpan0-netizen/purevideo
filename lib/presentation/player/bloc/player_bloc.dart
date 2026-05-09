@@ -31,6 +31,8 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
 
   Timer? _hideControlsTimer;
   Timer? _seekingTimer;
+  Timer? _debounceHideControlsTimer;
+  VoidCallback? _castStateListener;
 
   final VideoSourceRepository _videoSourceRepository =
       getIt<VideoSourceRepository>();
@@ -74,6 +76,16 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
     _disposeMediaKit();
     _hideControlsTimer?.cancel();
     _seekingTimer?.cancel();
+    _debounceHideControlsTimer?.cancel();
+    // Remove cast state listener if it was added
+    if (_castStateListener != null) {
+      try {
+        state.castFramework.castContext.state
+            .removeListener(_castStateListener!);
+      } catch (e) {
+        debugPrint('Error removing cast state listener: $e');
+      }
+    }
     return super.close();
   }
 
@@ -99,11 +111,35 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
   }
 
   void _disposeMediaKit() {
-    _positionSubscription.cancel();
-    _durationSubscription.cancel();
-    _playingSubscription.cancel();
-    _bufferingSubscription.cancel();
-    _player.dispose();
+    try {
+      _positionSubscription.cancel();
+    } catch (e) {
+      debugPrint('Error cancelling position subscription: $e');
+    }
+
+    try {
+      _durationSubscription.cancel();
+    } catch (e) {
+      debugPrint('Error cancelling duration subscription: $e');
+    }
+
+    try {
+      _playingSubscription.cancel();
+    } catch (e) {
+      debugPrint('Error cancelling playing subscription: $e');
+    }
+
+    try {
+      _bufferingSubscription.cancel();
+    } catch (e) {
+      debugPrint('Error cancelling buffering subscription: $e');
+    }
+
+    try {
+      _player.dispose();
+    } catch (e) {
+      debugPrint('Error disposing media player: $e');
+    }
   }
 
   Future<void> _onInitializePlayer(
@@ -259,17 +295,16 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
     }
 
     try {
-      state.castFramework.castContext.state.addListener(
-        () async {
-          switch (state.castFramework.castContext.state.value) {
-            case CastState.connected:
-              add(const CastVideo());
-              break;
-            default:
-              break;
-          }
-        },
-      );
+      _castStateListener = () async {
+        switch (state.castFramework.castContext.state.value) {
+          case CastState.connected:
+            add(const CastVideo());
+            break;
+          default:
+            break;
+        }
+      };
+      state.castFramework.castContext.state.addListener(_castStateListener!);
     } catch (e) {
       debugPrint('Error initializing google cast: $e');
     }
@@ -296,16 +331,16 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
         watchedPosition = watchedMovie?.watchedTime;
       }
 
+      debugPrint('[PlayerBloc] Opening media: ${event.source.url}');
       await _player.open(
         Media(event.source.url,
             httpHeaders: headers,
             start: Duration(seconds: watchedPosition ?? 0)),
-        play: await _audioSession.setActive(true),
+        play: true,
       );
 
+      // Don't emit isPlaying yet - wait for buffering state change
       emit(state.copyWith(
-        isBuffering: false,
-        isPlaying: true,
         selectedSource: event.source,
         displayState: '',
       ));
@@ -449,7 +484,16 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
     UpdateBufferingState event,
     Emitter<PlayerState> emit,
   ) async {
-    emit(state.copyWith(isBuffering: event.isBuffering));
+    if (event.isBuffering) {
+      debugPrint('[PlayerBloc] Buffering started');
+      emit(state.copyWith(isBuffering: true));
+    } else {
+      debugPrint('[PlayerBloc] Buffering complete - playback ready');
+      emit(state.copyWith(
+        isBuffering: false,
+        isPlaying: true,
+      ));
+    }
     _updateNotification();
   }
 
@@ -467,34 +511,66 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
     DisposePlayer event,
     Emitter<PlayerState> emit,
   ) async {
-    _audioSession.setActive(false);
-    _mediaService.audioHandler.playbackState.add(PlaybackState(
-      playing: false,
-    ));
-    state.castFramework.castContext.sessionManager.remoteMediaClient.stop();
+    if (isClosed) return;
+
+    try {
+      _audioSession.setActive(false);
+    } catch (e) {
+      debugPrint('Error setting audio session inactive: $e');
+    }
+
+    try {
+      _mediaService.audioHandler.playbackState.add(PlaybackState(
+        playing: false,
+      ));
+    } catch (e) {
+      debugPrint('Error updating playback state: $e');
+    }
+
+    try {
+      state.castFramework.castContext.sessionManager.remoteMediaClient.stop();
+    } catch (e) {
+      debugPrint('Error stopping cast: $e');
+    }
+
     if (_movie != null) {
-      if (_movie!.isSeries) {
-        watchedService.watchEpisode(
-            _movie!,
-            _movie!.seasons![_seasonIndex!],
-            _movie!.seasons![_seasonIndex!].episodes[_episodeIndex!],
-            state.position.inSeconds);
-      } else {
-        watchedService.watchMovie(_movie!, state.position.inSeconds);
+      try {
+        if (_movie!.isSeries) {
+          watchedService.watchEpisode(
+              _movie!,
+              _movie!.seasons![_seasonIndex!],
+              _movie!.seasons![_seasonIndex!].episodes[_episodeIndex!],
+              state.position.inSeconds);
+        } else {
+          watchedService.watchMovie(_movie!, state.position.inSeconds);
+        }
+      } catch (e) {
+        debugPrint('Error saving watched progress: $e');
       }
     }
-    state.pipFramework.dispose();
+
+    try {
+      state.pipFramework.dispose();
+    } catch (e) {
+      debugPrint('Error disposing PiP framework: $e');
+    }
+
     _disposeMediaKit();
     _hideControlsTimer?.cancel();
     _seekingTimer?.cancel();
+    _debounceHideControlsTimer?.cancel();
   }
 
   void _resetHideControlsTimer() {
-    _hideControlsTimer?.cancel();
-    _hideControlsTimer = Timer(const Duration(seconds: 3), () {
-      if (!isClosed && state.isPlaying) {
-        add(const HideControls());
-      }
+    // Debounce: only reset timer if controls are visible and at least 500ms have passed since last reset
+    _debounceHideControlsTimer?.cancel();
+    _debounceHideControlsTimer = Timer(const Duration(milliseconds: 500), () {
+      _hideControlsTimer?.cancel();
+      _hideControlsTimer = Timer(const Duration(seconds: 3), () {
+        if (!isClosed && state.isPlaying) {
+          add(const HideControls());
+        }
+      });
     });
   }
 

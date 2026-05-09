@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'package:collection/collection.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:purevideo/core/services/merg_service.dart';
-import 'package:purevideo/core/services/watched_service.dart';
 import 'package:purevideo/core/utils/supported_enum.dart';
 import 'package:purevideo/data/models/movie_model.dart';
 import 'package:purevideo/data/models/auth_model.dart';
@@ -15,7 +13,6 @@ import 'package:purevideo/presentation/movies/bloc/movies_state.dart';
 class MoviesBloc extends Bloc<MoviesEvent, MoviesState> {
   final Map<SupportedService, MovieRepository> _repositories = getIt();
   final Map<SupportedService, AuthRepository> _authRepositories = getIt();
-  final WatchedService _watchedService = getIt();
   final List<MovieModel> _movies = [];
   final List<StreamSubscription<AuthModel>> _authSubscriptions = [];
 
@@ -64,30 +61,29 @@ class MoviesBloc extends Bloc<MoviesEvent, MoviesState> {
         return;
       }
 
-      _movies.addAll(_watchedService
-          .getAll()
-          .sorted(
-            (a, b) => b.watchedAt.compareTo(a.watchedAt),
-          )
-          .map((watched) => MovieModel(
-                services: watched.movie.services
-                    .map((e) => ServiceMovieModel(
-                        service: e.service,
-                        url: e.url,
-                        title: e.title,
-                        imageUrl: e.imageUrl))
-                    .toList(),
-              )));
-
       final merge = getIt<MergeService>();
 
-      for (final entry in _repositories.entries) {
-        final authRepository = _authRepositories[entry.key];
-        if (authRepository?.getAccount() == null) continue;
-        final repository = entry.value;
+      // Fetch movies from all logged-in services in parallel instead of sequentially
+      final loggedServiceEntries = _repositories.entries
+          .where((entry) => _authRepositories[entry.key]?.getAccount() != null)
+          .toList();
 
-        final movies = await repository.getMovies();
-        await merge.addFromService(movies);
+      if (loggedServiceEntries.isNotEmpty) {
+        final movieFutures = loggedServiceEntries
+            .map((entry) => entry.value.getMovies())
+            .toList();
+
+        // Wait for all API calls to complete in parallel, but continue even if one fails
+        final results = await Future.wait(
+          movieFutures,
+          eagerError: false,
+        ).then((results) =>
+            results.whereType<List<ServiceMovieModel>>().toList());
+
+        // Add all fetched movies to merge service
+        for (final movieList in results) {
+          await merge.addFromService(movieList);
+        }
       }
 
       final loggedServices = _authRepositories.entries
@@ -95,11 +91,12 @@ class MoviesBloc extends Bloc<MoviesEvent, MoviesState> {
           .map((entry) => entry.key)
           .toSet();
 
-      _movies.addAll(getIt<MergeService>().getMovies.where((m) => m.services
-          .map((s) => s.service)
-          .toSet()
-          .intersection(loggedServices)
-          .isNotEmpty));
+      _movies.addAll(getIt<MergeService>().getMovies.where((m) {
+        final movieServices = m.services
+            .map((s) => s.service)
+            .toSet();
+        return movieServices.intersection(loggedServices).isNotEmpty;
+      }));
 
       if (_movies.isEmpty) {
         emit(const MoviesError('Brak dostępnych filmów'));

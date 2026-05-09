@@ -1,61 +1,54 @@
-import 'dart:io';
-
-import 'package:dio/io.dart';
-import 'package:flutter/material.dart';
-import 'package:purevideo/core/video_hosts/video_host_registry.dart';
-import 'package:purevideo/core/video_hosts/video_host_scraper.dart';
-import 'package:purevideo/data/models/movie_model.dart';
+import 'package:flutter/rendering.dart';
 import 'package:purevideo/di/injection_container.dart';
-import 'package:dio/dio.dart';
+import 'package:hive/hive.dart';
+import 'package:purevideo/core/services/resolve_url_service.dart';
+import 'package:purevideo/data/models/movie_model.dart';
+
+@HiveType(typeId: 3)
+class VideoSource {
+  @HiveField(0)
+  final String url;
+  @HiveField(1)
+  final String lang;
+  @HiveField(2)
+  final String quality;
+  @HiveField(3)
+  final String host;
+  @HiveField(4)
+  final Map<String, String>? headers;
+
+  const VideoSource({
+    required this.url,
+    required this.lang,
+    required this.quality,
+    required this.host,
+    this.headers,
+  });
+
+  @override
+  String toString() {
+    return 'VideoSource(url: $url, lang: $lang, quality: $quality, host: $host, headers: $headers)';
+  }
+}
 
 class VideoSourceRepository {
-  final VideoHostRegistry _hostRegistry = getIt<VideoHostRegistry>();
+  late final ResolveUrlService _resolveService;
+
+  VideoSourceRepository() {
+    _initialize();
+  }
+
+  void _initialize() {
+    _resolveService = getIt<ResolveUrlService>();
+  }
 
   Future<MovieDetailsModel> scrapeVideoUrls(MovieDetailsModel movie) async {
     if (movie.videoUrls == null) return movie;
 
-    final videoSources = <VideoSource>[];
+    final results = await _resolveService.resolve(movie.videoUrls ?? []);
 
-    for (final hostLink in movie.videoUrls!) {
-      final scraper = _hostRegistry.getScraperForUrl(hostLink.url);
+    debugPrint('Resolved video sources: $results');
 
-      if (scraper == null) continue;
-
-      final videoSource = await scraper.getVideoSource(
-          hostLink.url, hostLink.lang, hostLink.quality);
-
-      if (videoSource == null) continue;
-
-      final Dio dio = Dio(
-        BaseOptions(
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 10),
-          sendTimeout: const Duration(seconds: 10),
-        ),
-      );
-
-      final ioc = HttpClient();
-      ioc.badCertificateCallback =
-          (X509Certificate cert, String host, int port) => true;
-
-      dio.httpClientAdapter = IOHttpClientAdapter(
-        createHttpClient: () => ioc,
-      );
-
-      try {
-        final response = await dio.head(videoSource.url,
-            options: Options(
-                headers: videoSource.headers, validateStatus: (_) => true));
-
-        if (response.statusCode != 200) continue;
-      } catch (e) {
-        debugPrint('Error checking video source URL: $e');
-        continue;
-      }
-
-      videoSources.add(videoSource);
-    }
-
-    return movie.copyWith(directUrls: videoSources);
+    return movie.copyWith(directUrls: results);
   }
 }

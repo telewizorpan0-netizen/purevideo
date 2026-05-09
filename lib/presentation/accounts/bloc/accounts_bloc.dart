@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:purevideo/core/utils/supported_enum.dart';
 import 'package:purevideo/data/models/account_model.dart';
@@ -48,6 +49,8 @@ class AccountsBloc extends Bloc<AccountsEvent, AccountsState> {
       }
 
       final result = await repository.signIn(event.fields);
+
+      debugPrint('Login result for ${event.service}: $result', wrapWidth: 1024);
 
       if (result.success && result.account != null) {
         FirebaseAnalytics.instance.logLogin(

@@ -13,4 +13,9 @@ class AuthModel {
     this.account,
     this.error,
   });
+
+  @override
+  String toString() {
+    return 'AuthModel(service: $service, success: $success, account: ${account?.toMap()}, error: $error)';
+  }
 }

@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:purevideo/core/utils/supported_enum.dart';
+import 'package:purevideo/data/models/filmweb_model.dart';
 import 'package:purevideo/data/models/movie_model.dart';
 import 'package:purevideo/data/models/watched_model.dart';
 
@@ -8,6 +9,17 @@ abstract class MovieDetailsEvent extends Equatable {
 
   @override
   List<Object?> get props => [];
+}
+
+class LoadFilmwebMovieDetails extends MovieDetailsEvent {
+  final FilmwebPreviewModel movie;
+
+  const LoadFilmwebMovieDetails({
+    required this.movie,
+  });
+
+  @override
+  List<Object> get props => [movie];
 }
 
 class LoadMovieDetails extends MovieDetailsEvent {

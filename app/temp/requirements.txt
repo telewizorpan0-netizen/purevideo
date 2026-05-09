@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+six
+LibResolveURL @ git+https://github.com/majusss/LibResolveURL.git

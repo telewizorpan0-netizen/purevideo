@@ -1,9 +1,9 @@
 import 'package:hive_flutter/adapters.dart';
 import 'package:purevideo/core/utils/supported_enum.dart';
-import 'package:purevideo/core/video_hosts/video_host_scraper.dart';
 import 'package:purevideo/data/models/filmweb_model.dart';
 import 'package:purevideo/data/models/link_model.dart';
 import 'package:purevideo/data/repositories/auth_repository.dart';
+import 'package:purevideo/data/repositories/video_source_repository.dart';
 import 'package:purevideo/di/injection_container.dart';
 
 part 'movie_model.g.dart';

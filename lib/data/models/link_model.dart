@@ -15,4 +15,17 @@ class HostLink {
 
   const HostLink(
       {required this.lang, required this.quality, required this.url});
+
+  @override
+  String toString() {
+    return 'HostLink(url: $url, lang: $lang, quality: $quality)';
+  }
+
+  HostLink copyWith({String? lang, String? quality, String? url}) {
+    return HostLink(
+      lang: lang ?? this.lang,
+      quality: quality ?? this.quality,
+      url: url ?? this.url,
+    );
+  }
 }

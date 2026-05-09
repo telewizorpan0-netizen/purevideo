@@ -16,10 +16,11 @@ class EkinoAuthRepository implements AuthRepository {
   late Dio _dio;
   AccountModel? _account;
   final _authController = StreamController<AuthModel>.broadcast();
+  late StreamSubscription<AuthModel> _authSubscription;
 
   EkinoAuthRepository([AccountModel? account]) {
     _loadSavedAccount();
-    _authController.stream.listen(_onAuthChanged);
+    _authSubscription = _authController.stream.listen(_onAuthChanged);
   }
 
   Future<void> _loadSavedAccount() async {
@@ -231,5 +232,10 @@ class EkinoAuthRepository implements AuthRepository {
       SupportedService.ekino,
       'account',
     );
+  }
+
+  void dispose() {
+    _authSubscription.cancel();
+    _authController.close();
   }
 }
