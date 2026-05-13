@@ -45,7 +45,9 @@ class _ThemeScreenState extends State<ThemeScreen> {
                       },
                       trailing: Switch(
                         value: _settingsService.isDarkMode,
-                        activeThumbColor: _settingsService.isSystemBrightness
+                        // Uzywamy 'activeColor' (kompatybilne z Flutter 3.32 w CI).
+                        // Od Fluttera 3.35 param nazywa sie 'activeThumbColor'.
+                        activeColor: _settingsService.isSystemBrightness
                             ? Colors.grey
                             : null,
                         onChanged: (value) {
