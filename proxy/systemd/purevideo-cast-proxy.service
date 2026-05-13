@@ -1,0 +1,28 @@
+[Unit]
+Description=PureVideo Cast Proxy (HLS z nagłówkami)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# --- DOSTOSUJ ---
+User=pawel
+WorkingDirectory=/home/pawel/purevideo/proxy
+Environment=PROXY_HOST=0.0.0.0
+Environment=PROXY_PORT=8080
+ExecStart=/home/pawel/purevideo/proxy/.venv/bin/python /home/pawel/purevideo/proxy/proxy.py
+Restart=on-failure
+RestartSec=3
+# Limity - proxy nie powinno zżerać CPU
+CPUQuota=80%
+MemoryMax=256M
+
+# Bezpieczeństwo
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/pawel/purevideo/proxy
+
+[Install]
+WantedBy=multi-user.target

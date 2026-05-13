@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart' hide PlayerState;
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:purevideo/core/services/media_service.dart';
+import 'package:purevideo/core/services/settings_service.dart';
 import 'package:purevideo/core/services/watched_service.dart';
 import 'package:purevideo/core/utils/supported_enum.dart';
 import 'package:purevideo/data/models/movie_model.dart';
@@ -39,6 +40,11 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
   final Map<SupportedService, MovieRepository> _movieRepositories =
       getIt<Map<SupportedService, MovieRepository>>();
   final MediaService _mediaService = getIt<MediaService>();
+  final SettingsService _settingsService = getIt<SettingsService>();
+
+  /// Flaga zapobiegająca wielokrotnemu wysłaniu `load()` na Cast w krótkim
+  /// odstępie (np. gdy listener i scheduler odpalą się równocześnie).
+  bool _castLoadInFlight = false;
 
   late final AudioSession _audioSession;
 
@@ -283,8 +289,11 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
       isBuffering: true,
     ));
 
+    // ZMIANA: nie castuj tu - poczekamy aż _player.open() zdąży dostarczyć
+    // `duration`, inaczej wysyłamy do Cast streamDuration=0, co niektóre
+    // receivery traktują jako błąd. Casting wystartuje po pierwszym
+    // `UpdateDuration` albo przez listener stanu Cast.
     if (state.castFramework.castContext.state.value == CastState.connected) {
-      add(const CastVideo());
       final sessionManager = state.castFramework.castContext.sessionManager;
       sessionManager.remoteMediaClient.onProgressUpdated =
           (final progressMs, final durationMs) {
@@ -295,13 +304,20 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
     }
 
     try {
-      _castStateListener = () async {
-        switch (state.castFramework.castContext.state.value) {
-          case CastState.connected:
-            add(const CastVideo());
-            break;
-          default:
-            break;
+      // DODANO: usuń poprzedniego listenera zanim dodasz nowy - inaczej
+      // każda zmiana źródła dodaje kolejny listener, a każdy z nich
+      // triggeruje `CastVideo` -> wielokrotne load() na Cast.
+      if (_castStateListener != null) {
+        try {
+          state.castFramework.castContext.state
+              .removeListener(_castStateListener!);
+        } catch (_) {}
+        _castStateListener = null;
+      }
+      _castStateListener = () {
+        if (state.castFramework.castContext.state.value ==
+            CastState.connected) {
+          add(const CastVideo());
         }
       };
       state.castFramework.castContext.state.addListener(_castStateListener!);
@@ -338,6 +354,12 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
             start: Duration(seconds: watchedPosition ?? 0)),
         play: true,
       );
+
+      // DODANO: jeżeli Cast jest już połączony - wystartuj cast po otwarciu
+      // lokalnego playera (mamy przynajmniej częściowo znane duration).
+      if (state.castFramework.castContext.state.value == CastState.connected) {
+        add(const CastVideo());
+      }
 
       // Don't emit isPlaying yet - wait for buffering state change
       emit(state.copyWith(
@@ -583,41 +605,119 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
 
   VideoController get controller => _controller;
 
+  /// Wykrywa MIME type dla Cast Receivera na podstawie URL-a.
+  String _detectCastContentType(String url, Map<String, String>? headers) {
+    final path = Uri.tryParse(url)?.path.toLowerCase() ?? url.toLowerCase();
+    if (path.endsWith('.m3u8') || path.contains('.m3u8')) {
+      return 'application/x-mpegURL';
+    }
+    if (path.endsWith('.mpd')) return 'application/dash+xml';
+    if (path.endsWith('.mp4') || path.endsWith('.m4v')) return 'video/mp4';
+    if (path.endsWith('.webm')) return 'video/webm';
+    // Fallback - jezeli resolver podał Content-Type w nagłówkach, użyj go
+    final hinted = headers?['Content-Type'] ?? headers?['content-type'];
+    if (hinted != null && hinted.isNotEmpty) return hinted;
+    // Default: nasze zrodla to prawie zawsze HLS
+    return 'application/x-mpegURL';
+  }
+
+  /// Koduje bajty do base64url bez paddingu (tak jak w `proxy.py`).
+  String _b64UrlNoPad(List<int> data) {
+    return base64Url.encode(data).replaceAll('=', '');
+  }
+
+  /// Buduje URL do proxy. Wybiera endpoint `/hls` dla playlist m3u8, `/seg`
+  /// dla pozostałych zasobów. Jeżeli proxy nie jest skonfigurowane -
+  /// zwraca oryginalny URL.
+  String _buildCastUrl(String originalUrl, Map<String, String>? headers) {
+    final proxyBase = _settingsService.castProxyUrl;
+    if (proxyBase.isEmpty) return originalUrl;
+
+    final u = _b64UrlNoPad(utf8.encode(originalUrl));
+    final h = _b64UrlNoPad(utf8.encode(jsonEncode(headers ?? <String, String>{})));
+
+    final path = Uri.tryParse(originalUrl)?.path.toLowerCase() ?? '';
+    final isHls = path.endsWith('.m3u8') || path.contains('.m3u8');
+    final endpoint = isHls ? 'hls' : 'seg';
+
+    return '$proxyBase/$endpoint?u=$u&h=$h';
+  }
+
   Future<void> _onCastVideo(CastVideo event, Emitter<PlayerState> emit) async {
-    if (state.castFramework.castContext.state.value == CastState.connected) {
-      if (state.selectedSource == null) {
-        emit(state.copyWith(
-          errorMessage: 'Nie wybrano źródła wideo do przesłania.',
-        ));
-        return;
-      }
+    if (state.castFramework.castContext.state.value != CastState.connected) {
+      return;
+    }
+    if (state.selectedSource == null) {
+      emit(state.copyWith(
+        errorMessage: 'Nie wybrano źródła wideo do przesłania.',
+      ));
+      return;
+    }
+    // Debounce - chroni przed double-load gdy listener + scheduler odpalą się
+    // równocześnie (np. Cast zmienia state na connected w chwili `open`).
+    if (_castLoadInFlight) {
+      debugPrint('[Cast] load() już w toku, pomijam duplikat');
+      return;
+    }
+    _castLoadInFlight = true;
+
+    try {
       _player.pause();
+
+      final source = state.selectedSource!;
+      final contentType = _detectCastContentType(source.url, source.headers);
+      final castUrl = _buildCastUrl(source.url, source.headers);
+      final usingProxy = castUrl != source.url;
+
+      debugPrint(
+        '[Cast] load url=$castUrl type=$contentType pos=${state.position.inMilliseconds}ms '
+        'dur=${state.duration.inMilliseconds}ms proxy=$usingProxy '
+        'headers=${source.headers?.keys.toList()}',
+      );
+
       state.castFramework.castContext.sessionManager.remoteMediaClient.load(
-          MediaLoadRequestData(
-              currentTime: state.position.inMilliseconds,
-              shouldAutoplay: true,
-              mediaInfo: MediaInfo(
-                  streamDuration: state.duration.inMilliseconds,
-                  streamType: StreamType.buffered,
-                  contentType: 'videos/mp4',
-                  contentId: state.selectedSource!.url,
-                  customDataAsJson:
-                      jsonEncode({'headers': state.selectedSource!.headers}),
-                  mediaMetadata: MediaMetadata(
-                      mediaType: MediaType.movie,
-                      strings: _movie!.isSeries
-                          ? {
-                              MediaMetadataKey.title.name: _movie!
-                                  .seasons![_seasonIndex!]
-                                  .episodes[_episodeIndex!]
-                                  .title,
-                              MediaMetadataKey.subtitle.name: _movie!.title,
-                            }
-                          : {MediaMetadataKey.title.name: _movie!.title},
-                      webImages: [
-                        WebImage(url: _movie!.imageUrl),
-                        WebImage(url: _movie!.imageUrl)
-                      ]))));
+        MediaLoadRequestData(
+          currentTime: state.position.inMilliseconds,
+          shouldAutoplay: true,
+          mediaInfo: MediaInfo(
+            streamDuration: state.duration.inMilliseconds,
+            streamType: StreamType.buffered,
+            contentType: contentType,
+            contentId: castUrl,
+            // Zostawiamy nagłówki w customData - jeśli kiedyś podmienimy
+            // receiver na własny, dalej będzie miał je gotowe. Obecny
+            // domyślny receiver to ignoruje, ale to pole jest nieszkodliwe.
+            customDataAsJson: jsonEncode({
+              'headers': source.headers ?? <String, String>{},
+              'originalUrl': source.url,
+              'proxy': usingProxy,
+            }),
+            mediaMetadata: MediaMetadata(
+              mediaType: MediaType.movie,
+              strings: _movie!.isSeries
+                  ? {
+                      MediaMetadataKey.title.name: _movie!
+                          .seasons![_seasonIndex!]
+                          .episodes[_episodeIndex!]
+                          .title,
+                      MediaMetadataKey.subtitle.name: _movie!.title,
+                    }
+                  : {MediaMetadataKey.title.name: _movie!.title},
+              webImages: [
+                WebImage(url: _movie!.imageUrl),
+                WebImage(url: _movie!.imageUrl),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[Cast] load error: $e');
+      emit(state.copyWith(errorMessage: 'Błąd castowania: $e'));
+    } finally {
+      Future.delayed(const Duration(milliseconds: 800), () {
+        _castLoadInFlight = false;
+      });
     }
   }
 

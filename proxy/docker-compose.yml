@@ -1,0 +1,20 @@
+services:
+  cast-proxy:
+    build: .
+    image: purevideo-cast-proxy:latest
+    container_name: purevideo-cast-proxy
+    restart: unless-stopped
+    # network_mode: host jest opcjonalne - ale ułatwia dostęp z LAN-u bez
+    # konfigurowania portów. Jeśli wolisz mieć jasne mapowanie - zakomentuj
+    # network_mode i odkomentuj 'ports:'.
+    # network_mode: host
+    ports:
+      - "8080:8080"
+    environment:
+      PROXY_HOST: 0.0.0.0
+      PROXY_PORT: "8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

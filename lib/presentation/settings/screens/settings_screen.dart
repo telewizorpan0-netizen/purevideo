@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purevideo/core/services/settings_service.dart';
 import 'package:purevideo/di/injection_container.dart';
+import 'package:purevideo/presentation/settings/widgets/cast_proxy_dialog.dart';
 import 'package:purevideo/presentation/settings/widgets/settings_item.dart';
 import 'package:purevideo/presentation/settings/widgets/settings_listenable.dart';
 import 'package:purevideo/presentation/settings/widgets/settings_section.dart';
@@ -55,6 +56,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             ],
+          ),
+          const SizedBox(height: 24),
+          SettingsListenable(
+            builder: (context, value, child) {
+              final proxy = _settingsService.castProxyUrl;
+              return SettingsSection(
+                title: 'Cast',
+                items: [
+                  SettingsItem(
+                    icon: Icons.cast_connected_outlined,
+                    title: 'Adres proxy Cast',
+                    subtitle: proxy.isEmpty
+                        ? 'Nie skonfigurowano - cast dziala bez proxy'
+                        : proxy,
+                    onTap: () => showDialog(
+                      context: context,
+                      builder: (_) => const CastProxyDialog(),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           SettingsListenable(
             builder: (context, value, child) {

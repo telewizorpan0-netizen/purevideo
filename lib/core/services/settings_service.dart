@@ -6,6 +6,7 @@ class SettingsService {
   static const String _isDebugVisibleKey = 'isDebugVisible';
   static const String _isDarkModeKey = 'isDarkMode';
   static const String _isSystemBrightnessKey = 'isSystemBrightness';
+  static const String _castProxyUrlKey = 'castProxyUrl';
 
   late final Box box;
 
@@ -53,4 +54,23 @@ class SettingsService {
       return ThemeMode.light;
     }
   }
+
+  /// Adres (schema+host+port) serwera proxy dla Google Cast, np.
+  /// `http://192.168.1.42:8080`. Pusty string = proxy wyłączone.
+  String get castProxyUrl {
+    final raw = box.get(_castProxyUrlKey);
+    if (raw is String) return raw.trim();
+    return '';
+  }
+
+  /// Zapisuje adres proxy. Usuwa końcowe `/`. Pusty string kasuje proxy.
+  void setCastProxyUrl(String value) {
+    var v = value.trim();
+    while (v.endsWith('/')) {
+      v = v.substring(0, v.length - 1);
+    }
+    box.put(_castProxyUrlKey, v);
+  }
+
+  bool get hasCastProxy => castProxyUrl.isNotEmpty;
 }
