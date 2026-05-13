@@ -56,16 +56,43 @@ jobs:
           echo "Zawartosc site-packages:"
           ls "$SITE_DIR" | head -20 || true
 
-      - name: Decode Keystore
+      - name: Prepare signing config
+        # W forku (bez KEYSTORE_BASE64 secret) generujemy self-signed
+        # keystore zeby build dalej dzialal. APK podpisany takim kluczem
+        # instaluje sie normalnie na telefonie - po prostu nie jest to
+        # oryginalny podpis autora.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/keystore.jks
-
-      - name: Create key.properties
-        run: |
-          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
-          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
-          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
-          echo "storeFile=keystore.jks" >> android/key.properties
+          set -eu
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            echo "Wykryto secret KEYSTORE_BASE64 - uzywam go."
+            echo "$KEYSTORE_BASE64" | base64 --decode > android/app/keystore.jks
+            {
+              echo "storePassword=$KEYSTORE_PASSWORD"
+              echo "keyPassword=$KEY_PASSWORD"
+              echo "keyAlias=$KEY_ALIAS"
+              echo "storeFile=keystore.jks"
+            } > android/key.properties
+          else
+            echo "Brak secret KEYSTORE_BASE64 - generuje ephemeralny keystore."
+            keytool -genkey -noprompt \
+              -keystore android/app/keystore.jks \
+              -storetype PKCS12 \
+              -storepass android -keypass android \
+              -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=PureVideo CI,O=CI,C=PL"
+            {
+              echo "storePassword=android"
+              echo "keyPassword=android"
+              echo "keyAlias=androiddebugkey"
+              echo "storeFile=keystore.jks"
+            } > android/key.properties
+          fi
 
       - name: Build APK
         run: flutter build apk --release
