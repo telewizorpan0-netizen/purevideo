@@ -48,29 +48,27 @@ jobs:
         run: |
           set -eux
           rm -f app/app.zip app/app.zip.hash
-          dart pub global activate serious_python
-          # API serious_python 1.0.0:
-          #   -p Android        platforma (case sensitive)
-          #   -a app/app.zip    sciezka do wynikowego archiwum
-          #   -r "..."          opcje przekazane do pip install. Aby wziac
-          #                     requirements z pliku, robimy zagniezdzone -r:
-          #                     pip dostanie '-r <plik>' i wczyta requirements.
-          REQ_PATH="$(realpath app/temp/requirements.txt)"
-          echo "Requirements file: $REQ_PATH"
-          cat "$REQ_PATH"
+          # WAZNE: aktywujemy WERSJE 0.9.11 zeby pasowala do plugin gradle
+          # (pubspec.yaml: serious_python: ^0.9.11). Najnowsza 1.0.0 ma INNE
+          # CLI (-p Android zamiast --mobile, niezgodne flagi -r) i blokuje
+          # paczki z git+https przez --only-binary :all:. LibResolveURL jest
+          # tylko z gita, wiec MUSIMY uzyc 0.9.11.
+          dart pub global activate serious_python 0.9.11
+          echo "Requirements:"
+          cat app/temp/requirements.txt
           echo "---"
+          # CLI 0.9.11 auto-wykrywa requirements.txt w katalogu zrodlowym.
           dart run serious_python:main package app/temp \
-            -p Android \
-            -a app/app.zip \
-            -r "-r $REQ_PATH" \
-            --verbose
+            --mobile \
+            --platform android \
+            --asset-dir app
           ls -la app/
           echo "Rozmiar app.zip:"
-          du -h app/app.zip
-          echo "Zawartosc app.zip (top 50):"
-          unzip -l app/app.zip | head -50
-          echo "Czy fastapi jest w bundle?"
-          unzip -l app/app.zip | grep -E "(fastapi|uvicorn|libresolveurl)" | head -20 || echo "BRAK fastapi w app.zip!"
+          du -h app/app.zip || true
+          echo "Zawartosc app.zip (top 60):"
+          unzip -l app/app.zip | head -60 || true
+          echo "Czy fastapi/libresolveurl sa w bundle?"
+          unzip -l app/app.zip | grep -iE "(fastapi|uvicorn|libresolveurl|six)" | head -20 || echo "BRAK paczek w app.zip!"
           # Ustaw zmienna - plugin gradle sprawdza czy istnieje, nawet jesli
           # app.zip juz zawiera wszystko.
           SITE_DIR="${{ github.workspace }}/.site-packages"
