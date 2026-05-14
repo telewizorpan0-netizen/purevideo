@@ -37,11 +37,10 @@ jobs:
           python-version: "3.11"
 
       - name: Pre-build LibResolveURL wheel
-        # serious_python wymusza --only-binary :all: na pip install,
-        # co blokuje paczki z git+https. LibResolveURL jest dostepne TYLKO
-        # z gita (nie ma na PyPI), wiec budujemy z niego wheel-a (pure
-        # python, czyli universal py3-none-any.whl) i wskazujemy go potem
-        # przez --find-links.
+        # LibResolveURL jest tylko z gita (nie ma na PyPI). Budujemy z niego
+        # wheel-a (pure Python = py3-none-any.whl, czyli "binary" dla pip-a)
+        # i wskazujemy go potem przez --find-links przy instalacji do
+        # site-packages.
         run: |
           set -eux
           mkdir -p ./wheels
@@ -50,60 +49,57 @@ jobs:
             --no-deps -w ./wheels
           ls -la ./wheels/
 
+      - name: Install Python packages into per-arch site-packages
+        # KLUCZOWE: plugin gradle serious_python_android oczekuje, ze
+        # SERIOUS_PYTHON_SITE_PACKAGES wskazuje na katalog z podkatalogami
+        # per architektura (arm64-v8a, armeabi-v7a, x86_64). Stamtad bierze
+        # paczki do APK - to jest sposob, w jaki autor robi to lokalnie.
+        #
+        # Pre-built wheele Android-kompatybilne (np. pydantic_core dla fastapi)
+        # sa na https://pypi.flet.dev - oficjalny pypi index od flet.
+        run: |
+          set -eux
+          SITE_DIR="${{ github.workspace }}/.site-packages"
+          rm -rf "$SITE_DIR"
+          mkdir -p "$SITE_DIR"
+          for ARCH in arm64-v8a armeabi-v7a x86_64; do
+            ARCH_DIR="$SITE_DIR/$ARCH"
+            mkdir -p "$ARCH_DIR"
+            echo "=== Instaluje pakiety dla $ARCH do $ARCH_DIR ==="
+            python -m pip install \
+              --target="$ARCH_DIR" \
+              --extra-index-url=https://pypi.flet.dev \
+              --find-links=./wheels \
+              fastapi uvicorn six LibResolveURL
+            echo "=== Zawartosc $ARCH_DIR (top-level): ==="
+            ls "$ARCH_DIR" | head -40
+          done
+          echo "SERIOUS_PYTHON_SITE_PACKAGES=$SITE_DIR" >> "$GITHUB_ENV"
+          echo "Calkowity rozmiar site-packages:"
+          du -sh "$SITE_DIR"
+
       - name: Build Python app package (serious_python)
-        id: build_python
-        # WAZNE: usuwamy stare app.zip z repo bo jest niesynchronizowane
-        # ze zrodlami (zawiera stary main.py uzywajacy flask). Krok ma
-        # 'continue-on-error' - jak nie zadziala, fallback uzyje istniejacego
-        # app.zip a my pokazemy ostrzezenie.
-        continue-on-error: true
+        # Buduje app.zip ze samym main.py (bez site-packages - one
+        # zostaly osobno zainstalowane w poprzednim kroku do SITE_DIR).
+        # WAZNE: usuwamy stare app.zip z repo bo zawiera stary main.py
+        # uzywajacy flask, podczas gdy main.py w repo uzywa fastapi.
         run: |
           set -eux
           rm -f app/app.zip app/app.zip.hash
           dart pub global activate serious_python 0.9.11
-          echo "Requirements input:"
-          cat app/temp/requirements.txt
-          echo "---"
-          # serious_python 0.9.11 ma takie samo CLI jak 1.0.0 (-p Android, -a
-          # i -r). Nie mozna uzyc "-r path/to/file" jako wartosci `-r` bo
-          # serious_python_le parsuje argument i zostawia wiodaca spacje
-          # ('Could not open requirements file: " /home/..."'). Dlatego
-          # podajemy KAZDY pakiet jako osobny `-r` i opcje pip-a tez:
+          # --skip-site-packages: zbuduj app.zip tylko ze zrodel,
+          # nie probuj pakowac zaleznosci pip (te juz mamy w SITE_DIR).
           dart run serious_python:main package app/temp \
             -p Android \
             -a app/app.zip \
-            -r "--find-links=${{ github.workspace }}/wheels" \
-            -r "fastapi" \
-            -r "uvicorn" \
-            -r "six" \
-            -r "LibResolveURL" \
-            --verbose
+            --skip-site-packages
           ls -la app/
           echo "Rozmiar app.zip:"
           du -h app/app.zip
-          echo "Zawartosc app.zip (top 60):"
-          unzip -l app/app.zip | head -60
-          echo "Czy fastapi/libresolveurl sa w bundle?"
-          unzip -l app/app.zip | grep -iE "(fastapi|uvicorn|libresolveurl|six)" | head -20
-
-      - name: Validate app.zip
-        run: |
-          set -eu
-          if [ ! -f app/app.zip ]; then
-            echo "::error::Brak pliku app/app.zip - rebuild padl i nie ma fallbacku."
-            exit 1
-          fi
-          echo "Walidacja app.zip:"
-          du -h app/app.zip
-          if unzip -p app/app.zip main.py 2>/dev/null | head -20 | grep -q "from fastapi"; then
-            echo "OK: main.py uzywa fastapi (nowy)"
-          elif unzip -p app/app.zip main.py 2>/dev/null | head -20 | grep -q "from flask"; then
-            echo "::warning::app.zip zawiera STARY main.py z flask - Python serwer w APK nie zadziala. Zbuduj app.zip lokalnie i commituj (instrukcja w opisie zadania)."
-          fi
-          # Plugin gradle wymaga zmiennej, nawet jesli app.zip juz ma site-packages.
-          SITE_DIR="${{ github.workspace }}/.site-packages"
-          mkdir -p "$SITE_DIR"
-          echo "SERIOUS_PYTHON_SITE_PACKAGES=$SITE_DIR" >> "$GITHUB_ENV"
+          echo "Zawartosc app.zip:"
+          unzip -l app/app.zip | head -30
+          echo "Pierwsze linie main.py wewnatrz app.zip:"
+          unzip -p app/app.zip main.py | head -15
 
       - name: Prepare signing config
         # W forku (bez KEYSTORE_BASE64 secret) generujemy self-signed
