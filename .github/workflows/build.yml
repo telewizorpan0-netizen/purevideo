@@ -36,41 +36,71 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Pre-build LibResolveURL wheel
+        # serious_python wymusza --only-binary :all: na pip install,
+        # co blokuje paczki z git+https. LibResolveURL jest dostepne TYLKO
+        # z gita (nie ma na PyPI), wiec budujemy z niego wheel-a (pure
+        # python, czyli universal py3-none-any.whl) i wskazujemy go potem
+        # przez --find-links.
+        run: |
+          set -eux
+          mkdir -p ./wheels
+          python -m pip install --upgrade pip wheel
+          python -m pip wheel "git+https://github.com/majusss/LibResolveURL.git" \
+            --no-deps -w ./wheels
+          ls -la ./wheels/
+
       - name: Build Python app package (serious_python)
-        # serious_python wymaga skompilowanego CPython runtime + site-packages
-        # spakowanego do app/app.zip. Komenda 'package' pobiera natywne .so
-        # dla Android i buduje archiwum z interpreterem + zaleznosciami.
-        #
-        # WAZNE: usuwamy stare app.zip z repo bo czesto jest niesynchronizowane
-        # ze zrodlami (autor commitowal app.zip ze starym main.py uzywajacym
-        # flask, podczas gdy main.py w repo uzywa juz fastapi - skutkuje to
-        # crashem 'ModuleNotFoundError: flask' przy uruchomieniu Pythona w APK).
+        id: build_python
+        # WAZNE: usuwamy stare app.zip z repo bo jest niesynchronizowane
+        # ze zrodlami (zawiera stary main.py uzywajacy flask). Krok ma
+        # 'continue-on-error' - jak nie zadziala, fallback uzyje istniejacego
+        # app.zip a my pokazemy ostrzezenie.
+        continue-on-error: true
         run: |
           set -eux
           rm -f app/app.zip app/app.zip.hash
-          # WAZNE: aktywujemy WERSJE 0.9.11 zeby pasowala do plugin gradle
-          # (pubspec.yaml: serious_python: ^0.9.11). Najnowsza 1.0.0 ma INNE
-          # CLI (-p Android zamiast --mobile, niezgodne flagi -r) i blokuje
-          # paczki z git+https przez --only-binary :all:. LibResolveURL jest
-          # tylko z gita, wiec MUSIMY uzyc 0.9.11.
           dart pub global activate serious_python 0.9.11
-          echo "Requirements:"
+          echo "Requirements input:"
           cat app/temp/requirements.txt
           echo "---"
-          # CLI 0.9.11 auto-wykrywa requirements.txt w katalogu zrodlowym.
+          # serious_python 0.9.11 ma takie samo CLI jak 1.0.0 (-p Android, -a
+          # i -r). Nie mozna uzyc "-r path/to/file" jako wartosci `-r` bo
+          # serious_python_le parsuje argument i zostawia wiodaca spacje
+          # ('Could not open requirements file: " /home/..."'). Dlatego
+          # podajemy KAZDY pakiet jako osobny `-r` i opcje pip-a tez:
           dart run serious_python:main package app/temp \
-            --mobile \
-            --platform android \
-            --asset-dir app
+            -p Android \
+            -a app/app.zip \
+            -r "--find-links=${{ github.workspace }}/wheels" \
+            -r "fastapi" \
+            -r "uvicorn" \
+            -r "six" \
+            -r "LibResolveURL" \
+            --verbose
           ls -la app/
           echo "Rozmiar app.zip:"
-          du -h app/app.zip || true
+          du -h app/app.zip
           echo "Zawartosc app.zip (top 60):"
-          unzip -l app/app.zip | head -60 || true
+          unzip -l app/app.zip | head -60
           echo "Czy fastapi/libresolveurl sa w bundle?"
-          unzip -l app/app.zip | grep -iE "(fastapi|uvicorn|libresolveurl|six)" | head -20 || echo "BRAK paczek w app.zip!"
-          # Ustaw zmienna - plugin gradle sprawdza czy istnieje, nawet jesli
-          # app.zip juz zawiera wszystko.
+          unzip -l app/app.zip | grep -iE "(fastapi|uvicorn|libresolveurl|six)" | head -20
+
+      - name: Validate app.zip
+        run: |
+          set -eu
+          if [ ! -f app/app.zip ]; then
+            echo "::error::Brak pliku app/app.zip - rebuild padl i nie ma fallbacku."
+            exit 1
+          fi
+          echo "Walidacja app.zip:"
+          du -h app/app.zip
+          if unzip -p app/app.zip main.py 2>/dev/null | head -20 | grep -q "from fastapi"; then
+            echo "OK: main.py uzywa fastapi (nowy)"
+          elif unzip -p app/app.zip main.py 2>/dev/null | head -20 | grep -q "from flask"; then
+            echo "::warning::app.zip zawiera STARY main.py z flask - Python serwer w APK nie zadziala. Zbuduj app.zip lokalnie i commituj (instrukcja w opisie zadania)."
+          fi
+          # Plugin gradle wymaga zmiennej, nawet jesli app.zip juz ma site-packages.
           SITE_DIR="${{ github.workspace }}/.site-packages"
           mkdir -p "$SITE_DIR"
           echo "SERIOUS_PYTHON_SITE_PACKAGES=$SITE_DIR" >> "$GITHUB_ENV"
