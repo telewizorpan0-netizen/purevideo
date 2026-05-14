@@ -149,5 +149,16 @@ async def health():
 # UWAGA: pod serious_python __name__ == "main" (nie "__main__"), wiec
 # uruchamiamy uvicorn bezwarunkowo. Klient Flutter laczy sie pod
 # http://localhost:8080 (patrz lib/core/services/resolve_url_service.dart).
+#
+# log_config=None: serious_python zastepuje sys.stdout wlasnym _LogcatWriter,
+# ktory nie ma metody isatty() - domyslna konfiguracja logow uvicorn pada
+# z 'AttributeError: object has no attribute isatty'. Wylaczamy ja, a logi
+# i tak ladnie trafiaja przez nasz logger pythonowy do logcat.
 import uvicorn
-uvicorn.run(app, host="127.0.0.1", port=8080, log_level="info")
+uvicorn.run(
+    app,
+    host="127.0.0.1",
+    port=8080,
+    log_config=None,
+    access_log=False,
+)
