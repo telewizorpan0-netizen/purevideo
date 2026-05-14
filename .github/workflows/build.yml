@@ -49,12 +49,15 @@ jobs:
           set -eux
           rm -f app/app.zip app/app.zip.hash
           dart pub global activate serious_python
+          # Uwaga: API CLI serious_python 1.0.0 jest inne niz w starszych
+          # wersjach - flagi --mobile/--asset-dir nie istnieja, w zamian:
+          # -p Android (z duzej litery), -a sciezka do app.zip.
+          # Dodajemy --compile-app i --compile-packages dla optymalizacji.
           dart run serious_python:main package app/temp \
-            --mobile \
-            --platform android \
-            --asset-dir app
+            -p Android \
+            -a app/app.zip
           ls -la app/
-          echo "Zawartosc app.zip:"
+          echo "Zawartosc app.zip (top 30):"
           unzip -l app/app.zip | head -30 || true
           # Ustaw zmienna - plugin gradle sprawdza czy istnieje, nawet jesli
           # app.zip juz zawiera wszystko.
