@@ -49,16 +49,28 @@ jobs:
           set -eux
           rm -f app/app.zip app/app.zip.hash
           dart pub global activate serious_python
-          # Uwaga: API CLI serious_python 1.0.0 jest inne niz w starszych
-          # wersjach - flagi --mobile/--asset-dir nie istnieja, w zamian:
-          # -p Android (z duzej litery), -a sciezka do app.zip.
-          # Dodajemy --compile-app i --compile-packages dla optymalizacji.
+          # API serious_python 1.0.0:
+          #   -p Android        platforma (case sensitive)
+          #   -a app/app.zip    sciezka do wynikowego archiwum
+          #   -r "..."          opcje przekazane do pip install. Aby wziac
+          #                     requirements z pliku, robimy zagniezdzone -r:
+          #                     pip dostanie '-r <plik>' i wczyta requirements.
+          REQ_PATH="$(realpath app/temp/requirements.txt)"
+          echo "Requirements file: $REQ_PATH"
+          cat "$REQ_PATH"
+          echo "---"
           dart run serious_python:main package app/temp \
             -p Android \
-            -a app/app.zip
+            -a app/app.zip \
+            -r "-r $REQ_PATH" \
+            --verbose
           ls -la app/
-          echo "Zawartosc app.zip (top 30):"
-          unzip -l app/app.zip | head -30 || true
+          echo "Rozmiar app.zip:"
+          du -h app/app.zip
+          echo "Zawartosc app.zip (top 50):"
+          unzip -l app/app.zip | head -50
+          echo "Czy fastapi jest w bundle?"
+          unzip -l app/app.zip | grep -E "(fastapi|uvicorn|libresolveurl)" | head -20 || echo "BRAK fastapi w app.zip!"
           # Ustaw zmienna - plugin gradle sprawdza czy istnieje, nawet jesli
           # app.zip juz zawiera wszystko.
           SITE_DIR="${{ github.workspace }}/.site-packages"
