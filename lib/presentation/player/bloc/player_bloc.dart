@@ -46,7 +46,7 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
   /// odstępie (np. gdy listener i scheduler odpalą się równocześnie).
   bool _castLoadInFlight = false;
 
-  late final AudioSession _audioSession;
+  AudioSession? _audioSession;
 
   MovieDetailsModel? _movie;
   int? _seasonIndex;
@@ -326,8 +326,14 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
     }
 
     try {
-      _audioSession = await AudioSession.instance;
-      await _audioSession.configure(const AudioSessionConfiguration.music());
+      // Init only ONCE per bloc lifetime - InitializeVideoPlayer odpala sie
+      // przy kazdej zmianie zrodla, ale AudioSession.instance to singleton
+      // i pole _audioSession bylo wczesniej `late final` co wywalalo
+      // 'LateInitializationError: already initialized'.
+      if (_audioSession == null) {
+        _audioSession = await AudioSession.instance;
+        await _audioSession!.configure(const AudioSessionConfiguration.music());
+      }
     } catch (e) {
       debugPrint('Error initializing audio session: $e');
     }
@@ -378,7 +384,7 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
     PlayPause event,
     Emitter<PlayerState> emit,
   ) async {
-    _audioSession.setActive(!state.isPlaying);
+    _audioSession?.setActive(!state.isPlaying);
     _player.playOrPause();
 
     if (state.isOverlayVisible) {
@@ -536,7 +542,7 @@ class PlayerBloc extends Bloc<PlayerEvent, PlayerState> {
     if (isClosed) return;
 
     try {
-      _audioSession.setActive(false);
+      _audioSession?.setActive(false);
     } catch (e) {
       debugPrint('Error setting audio session inactive: $e');
     }
