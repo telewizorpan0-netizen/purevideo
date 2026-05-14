@@ -36,90 +36,32 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Pre-build LibResolveURL wheel
-        # LibResolveURL jest tylko z gita (nie ma na PyPI). Budujemy z niego
-        # wheel-a (pure Python = py3-none-any.whl, czyli "binary" dla pip-a)
-        # i wskazujemy go potem przez --find-links przy instalacji do
-        # site-packages.
-        run: |
-          set -eux
-          mkdir -p ./wheels
-          python -m pip install --upgrade pip wheel
-          python -m pip wheel "git+https://github.com/majusss/LibResolveURL.git" \
-            --no-deps -w ./wheels
-          ls -la ./wheels/
-
-      - name: Install Python packages into per-arch site-packages
-        # KLUCZOWE: plugin gradle serious_python_android oczekuje, ze
-        # SERIOUS_PYTHON_SITE_PACKAGES wskazuje na katalog z podkatalogami
-        # per architektura (arm64-v8a, armeabi-v7a, x86_64). Stamtad bierze
-        # paczki do APK - to jest sposob, w jaki autor robi to lokalnie.
+      - name: Use pre-built app.zip from repo
+        # KLUCZOWA ZMIANA: NIE rebuildujemy app.zip - uzywamy gotowego
+        # archiwum z repo. Autor commitowal app.zip z pelnym pre-built
+        # bundle (Flask serwer + LibResolveURL z PRYWATNYMI pluginami
+        # dla polskich hosterow boosteradx/ultrastream/vidara/voe/etc.,
+        # ktorych nie ma w public github.com/majusss/LibResolveURL).
         #
-        # WAZNE: pydantic_core (zaleznosc fastapi) ma natywne C-extensions
-        # ktore MUSZA byc skompilowane dla Androida ARM, nie dla hosta CI
-        # (x86_64 Linux). Uzywamy `pip --platform=android_X_arch` zeby
-        # wymusic pobranie wheel-a dla wlasciwej platformy zamiast budowania
-        # ze zrodel. Pre-built android wheele sa na https://pypi.flet.dev.
+        # Plugin gradle serious_python_android wymaga zmiennej
+        # SERIOUS_PYTHON_SITE_PACKAGES - ale wartosc nie ma znaczenia,
+        # bo wszystkie zaleznosci sa juz w app.zip. Tworzymy pusty
+        # katalog jako placeholder.
         run: |
           set -eux
-          SITE_DIR="${{ github.workspace }}/.site-packages"
-          rm -rf "$SITE_DIR"
-          mkdir -p "$SITE_DIR"
-
-          # Mapowanie nazw arch (Android NDK -> pip platform tag)
-          # Plugin gradle uzywa: arm64-v8a, armeabi-v7a, x86_64
-          # Pip oczekuje: android_21_arm64_v8a, android_21_armeabi_v7a, android_21_x86_64
-          install_for_arch() {
-            local ARCH="$1"
-            local PIP_PLATFORM="$2"
-            local ARCH_DIR="$SITE_DIR/$ARCH"
-            mkdir -p "$ARCH_DIR"
-            echo "=== Instaluje pakiety dla $ARCH ($PIP_PLATFORM) do $ARCH_DIR ==="
-            python -m pip install \
-              --target="$ARCH_DIR" \
-              --platform="$PIP_PLATFORM" \
-              --python-version=3.12 \
-              --implementation=cp \
-              --only-binary=:all: \
-              --extra-index-url=https://pypi.flet.dev \
-              --find-links=./wheels \
-              fastapi uvicorn six certifi LibResolveURL
-            echo "=== Zawartosc $ARCH_DIR (top-level): ==="
-            ls "$ARCH_DIR" | head -40
-            echo "=== Czy pydantic_core ma natywny .so? ==="
-            find "$ARCH_DIR/pydantic_core" -type f | head -10 || true
-          }
-
-          install_for_arch arm64-v8a   android_21_arm64_v8a
-          install_for_arch armeabi-v7a android_21_armeabi_v7a
-          install_for_arch x86_64      android_21_x86_64
-
-          echo "SERIOUS_PYTHON_SITE_PACKAGES=$SITE_DIR" >> "$GITHUB_ENV"
-          echo "Calkowity rozmiar site-packages:"
-          du -sh "$SITE_DIR"
-
-      - name: Build Python app package (serious_python)
-        # Buduje app.zip ze samym main.py (bez site-packages - one
-        # zostaly osobno zainstalowane w poprzednim kroku do SITE_DIR).
-        # WAZNE: usuwamy stare app.zip z repo bo zawiera stary main.py
-        # uzywajacy flask, podczas gdy main.py w repo uzywa fastapi.
-        run: |
-          set -eux
-          rm -f app/app.zip app/app.zip.hash
-          dart pub global activate serious_python 0.9.11
-          # --skip-site-packages: zbuduj app.zip tylko ze zrodel,
-          # nie probuj pakowac zaleznosci pip (te juz mamy w SITE_DIR).
-          dart run serious_python:main package app/temp \
-            -p Android \
-            -a app/app.zip \
-            --skip-site-packages
-          ls -la app/
-          echo "Rozmiar app.zip:"
+          if [ ! -f app/app.zip ]; then
+            echo "::error::Brakuje app/app.zip w repo!"
+            exit 1
+          fi
+          echo "Uzywamy istniejacego app.zip:"
           du -h app/app.zip
-          echo "Zawartosc app.zip:"
-          unzip -l app/app.zip | head -30
-          echo "Pierwsze linie main.py wewnatrz app.zip:"
-          unzip -p app/app.zip main.py | head -15
+          echo "Sprawdzam zawartosc..."
+          unzip -l app/app.zip | head -10
+          unzip -l app/app.zip | grep -E "(libresolveurl|main.py|LibResolveURL)" | head -10 || true
+          # Placeholder - plugin gradle tylko sprawdza istnienie zmiennej
+          SITE_DIR="${{ github.workspace }}/.site-packages"
+          mkdir -p "$SITE_DIR/arm64-v8a" "$SITE_DIR/armeabi-v7a" "$SITE_DIR/x86_64"
+          echo "SERIOUS_PYTHON_SITE_PACKAGES=$SITE_DIR" >> "$GITHUB_ENV"
 
       - name: Prepare signing config
         # W forku (bez KEYSTORE_BASE64 secret) generujemy self-signed
