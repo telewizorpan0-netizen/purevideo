@@ -36,25 +36,26 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Prepare Serious Python site-packages
-        # serious_python_android/android/build.gradle wymaga zmiennej
-        # SERIOUS_PYTHON_SITE_PACKAGES - nawet jesli app.zip ma juz bundle
-        # z zaleznosciami, plugin gradle i tak sprawdza istnienie zmiennej.
-        # Instalujemy wymagane pakiety Pythona do lokalnego katalogu
-        # zeby plugin mial czym przechwycic i - w razie czego - uzupelnic
-        # app.zip na etapie buildu.
+      - name: Build Python app package (serious_python)
+        # serious_python wymaga skompilowanego CPython runtime + site-packages
+        # spakowanego do app/app.zip. Komenda 'package' pobiera natywne .so
+        # dla Android i buduje archiwum z interpreterem + zaleznosciami.
         run: |
           set -eux
+          dart pub global activate serious_python
+          dart run serious_python:main package app/temp \
+            --mobile \
+            --platform android \
+            --dep-mappings '' \
+            --req-deps '' \
+            --asset-dir app \
+            || echo "WARN: serious_python package failed, falling back to existing app.zip"
+          ls -la app/app.zip || true
+          # Ustaw zmienna - plugin gradle sprawdza czy istnieje, nawet jesli
+          # app.zip juz zawiera wszystko.
           SITE_DIR="${{ github.workspace }}/.site-packages"
           mkdir -p "$SITE_DIR"
-          if [ -f app/temp/requirements.txt ]; then
-            python -m pip install --upgrade pip
-            # -t: target dir; pure-Python packages (fastapi, uvicorn, libresolveurl) nie wymagaja natywnej kompilacji.
-            python -m pip install --no-cache-dir -r app/temp/requirements.txt -t "$SITE_DIR" || true
-          fi
           echo "SERIOUS_PYTHON_SITE_PACKAGES=$SITE_DIR" >> "$GITHUB_ENV"
-          echo "Zawartosc site-packages:"
-          ls "$SITE_DIR" | head -20 || true
 
       - name: Prepare signing config
         # W forku (bez KEYSTORE_BASE64 secret) generujemy self-signed
