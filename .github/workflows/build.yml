@@ -83,7 +83,7 @@ jobs:
               --only-binary=:all: \
               --extra-index-url=https://pypi.flet.dev \
               --find-links=./wheels \
-              fastapi uvicorn six LibResolveURL
+              fastapi uvicorn six certifi LibResolveURL
             echo "=== Zawartosc $ARCH_DIR (top-level): ==="
             ls "$ARCH_DIR" | head -40
             echo "=== Czy pydantic_core ma natywny .so? ==="

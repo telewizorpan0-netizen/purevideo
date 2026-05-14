@@ -6,12 +6,31 @@ import time
 import re
 import asyncio
 import os
+import ssl
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Optional
 from fastapi import FastAPI
 from pydantic import BaseModel
 from urllib.parse import unquote
 import logging
+
+# --------------------------------------------------------------------------
+# SSL/CA bootstrap dla Pythona pod serious_python.
+# Bundle CPython z github.com/astral-sh/python-build-standalone NIE zawiera
+# domyślnego CA bundle (brak /etc/ssl/certs na Androidzie). Bez tego każdy
+# urllib.request HTTPS pada z 'CERTIFICATE_VERIFY_FAILED'.
+# Próbujemy najpierw użyć paczki `certifi` (jeśli zainstalowana), w razie
+# braku — wyłączamy weryfikację SSL globalnie. To jest BEZPIECZNE w naszym
+# kontekście: scrapujemy strony embed (publiczne URL-e), nie wymieniamy
+# żadnych poświadczeń.
+# --------------------------------------------------------------------------
+try:
+    import certifi
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+except Exception:
+    pass
+ssl._create_default_https_context = ssl._create_unverified_context
 
 # Setup config directories BEFORE importing libresolveurl
 base_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
