@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hive_flutter/adapters.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsService {
   static const String _isDeveloperModeKey = 'isDeveloperMode';
@@ -7,6 +9,12 @@ class SettingsService {
   static const String _isDarkModeKey = 'isDarkMode';
   static const String _isSystemBrightnessKey = 'isSystemBrightness';
   static const String _castProxyUrlKey = 'castProxyUrl';
+  static const String _castReceiverAppIdKey = 'castReceiverAppId';
+
+  /// Default Application ID - oficjalny Default Media Receiver Google.
+  /// Wspiera MP4, podstawowe HLS, DASH. NIE radzi sobie dobrze z fMP4-in-HLS
+  /// (CMAF) - dla takich strumieni potrzebny jest custom receiver z shaka.
+  static const String defaultCastReceiverAppId = 'CC1AD845';
 
   late final Box box;
 
@@ -73,4 +81,45 @@ class SettingsService {
   }
 
   bool get hasCastProxy => castProxyUrl.isNotEmpty;
+
+  /// Application ID Google Cast receivera. Domyslnie [defaultCastReceiverAppId]
+  /// (Default Media Receiver Google). Mozna ustawic wlasny ID custom receivera
+  /// z shaka-playerem, ktory wspiera fMP4-in-HLS (CMAF).
+  ///
+  /// UWAGA: zmiana wymaga ponownego uruchomienia aplikacji - CastContext
+  /// jest tworzony tylko raz przy starcie procesu.
+  String get castReceiverAppId {
+    final raw = box.get(_castReceiverAppIdKey);
+    if (raw is String) {
+      final v = raw.trim();
+      if (v.isNotEmpty) return v;
+    }
+    return defaultCastReceiverAppId;
+  }
+
+  /// Zapisuje Application ID. Pusty string lub `null` przywraca default.
+  /// Rownolegle zapisuje wartosc do natywnego SharedPreferences (klucz
+  /// `flutter.castReceiverAppId`), zeby [CastOptionsProvider] mogl odczytac
+  /// ID przed startem Fluttera. Zwraca `Future` ktory zakonczy sie po
+  /// zapisaniu w obu miejscach.
+  Future<void> setCastReceiverAppId(String value) async {
+    var v = value.trim().toUpperCase();
+    // Application ID to 8 znakow hex; nie walidujemy ostro, bo Google moze
+    // zmienic format w przyszlosci - po prostu zapisujemy co user wpisal.
+    if (v.isEmpty) {
+      await box.delete(_castReceiverAppIdKey);
+    } else {
+      await box.put(_castReceiverAppIdKey, v);
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (v.isEmpty) {
+        await prefs.remove(_castReceiverAppIdKey);
+      } else {
+        await prefs.setString(_castReceiverAppIdKey, v);
+      }
+    } on MissingPluginException {
+      // Test/edge env - ignorujemy.
+    }
+  }
 }
