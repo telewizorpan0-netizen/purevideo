@@ -61,6 +61,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SettingsListenable(
             builder: (context, value, child) {
               final proxy = _settingsService.castProxyUrl;
+              final receiverId = _settingsService.castReceiverAppId;
+              final isDefaultId =
+                  receiverId == SettingsService.defaultCastReceiverAppId;
               return SettingsSection(
                 title: 'Cast',
                 items: [
@@ -70,6 +73,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     subtitle: proxy.isEmpty
                         ? 'Nie skonfigurowano - cast dziala bez proxy'
                         : proxy,
+                    onTap: () => showDialog(
+                      context: context,
+                      builder: (_) => const CastProxyDialog(),
+                    ),
+                  ),
+                  SettingsItem(
+                    icon: Icons.tv_outlined,
+                    title: 'Receiver Application ID',
+                    subtitle: isDefaultId
+                        ? '$receiverId (Default Media Receiver)'
+                        : '$receiverId (custom - wymaga restartu po zmianie)',
                     onTap: () => showDialog(
                       context: context,
                       builder: (_) => const CastProxyDialog(),
