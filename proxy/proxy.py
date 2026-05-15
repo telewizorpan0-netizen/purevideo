@@ -398,9 +398,26 @@ async def seg(u: str, h: str = "", request: Request = None) -> Response:
     log.info("SEG  %s %s %s  %.0fms", method, upstream.status_code, url, elapsed)
 
     out_headers = sanitize_response_headers(upstream.headers)
-    media_type = out_headers.pop("content-type", None) or guess_content_type(
-        url, upstream.headers.get("content-type")
-    )
+    upstream_ct = out_headers.pop("content-type", None)
+
+    # ZMIANA: dla typowych segmentow video FORSUJEMY wlasciwy Content-Type
+    # niezaleznie od tego co wysyla upstream. Niektore CDN-y (m.in.
+    # ultrastream.online) wysylaja 'application/octet-stream' dla .m4s/.mp4
+    # segmentow, co powoduje ze Cast Receiver (shaka-player) odrzuca
+    # strumien bo 'nie wie jak go zdekodowac'. Wymuszamy poprawny typ
+    # po rozszerzeniu URL-a.
+    lower = url.lower().split("?", 1)[0]
+    if lower.endswith((".m4s", ".mp4", ".m4v")):
+        media_type = "video/mp4"
+    elif lower.endswith(".ts"):
+        media_type = "video/mp2t"
+    elif lower.endswith(".webm"):
+        media_type = "video/webm"
+    elif lower.endswith(".vtt"):
+        media_type = "text/vtt"
+    else:
+        # Inne (klucze AES, napisy, niewiadomo co) - zaufaj upstream lub zgadnij
+        media_type = upstream_ct or guess_content_type(url, upstream_ct)
 
     # DODANO: kluczowe dla Cast (shaka-player) - jeśli upstream nie ustawił
     # Accept-Ranges, ustaw bytes ręcznie. Bez tego receiver odmawia byterange
@@ -408,6 +425,11 @@ async def seg(u: str, h: str = "", request: Request = None) -> Response:
     # ultrastream.online (HLS z .m4s segmentami).
     if "accept-ranges" not in {k.lower() for k in out_headers}:
         out_headers["Accept-Ranges"] = "bytes"
+
+    # DODANO: dla segmentow ustawiamy Cache-Control immutable - shaka-player
+    # przesyla je tylko raz, niepotrzebne kupowanie wygasajacych
+    if lower.endswith((".m4s", ".ts", ".mp4", ".m4v")):
+        out_headers["Cache-Control"] = "public, max-age=31536000, immutable"
 
     if method == "HEAD":
         await upstream.aclose()
