@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>PureVideo Cast Receiver</title>
+
+  <!--
+    Google Cast Application Framework v3 (CAF) Receiver SDK.
+    Loads cast.framework.* APIs and includes shaka-player under the hood
+    for HLS/DASH playback (incl. fMP4-in-HLS / CMAF), which the Default
+    Media Receiver does NOT handle reliably for this app.
+  -->
+  <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: 'Roboto', sans-serif;
+      color: #fff;
+    }
+
+    cast-media-player {
+      width: 100%;
+      height: 100%;
+      --logo-image: url('logo.png');
+      --splash-image: url('logo.png');
+      --theme-hue: 200;
+    }
+  </style>
+</head>
+<body>
+  <!--
+    cast-media-player is a CAF custom element. CAF wires it up with
+    PlayerManager + shaka-player automatically. We only customize via
+    the message and playback-info interceptors in receiver.js.
+  -->
+  <cast-media-player id="player"></cast-media-player>
+
+  <script src="receiver.js"></script>
+</body>
+</html>
