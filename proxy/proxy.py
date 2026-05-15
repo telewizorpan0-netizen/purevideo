@@ -166,8 +166,10 @@ def sanitize_upstream_headers(h: dict[str, str]) -> dict[str, str]:
 
 # Nagłówki odpowiedzi, których nie chcemy puszczać do klienta
 _DROP_RESPONSE = {
-    "content-encoding",  # upstream może wysłać gzip; my forwardujemy bajty
-    "content-length",    # przy chunked/streaming niepoprawne
+    # NIE strip-ujemy 'content-length' ani 'content-range' - są kluczowe
+    # dla shaka-player w Cast Receiverze (byterange seek w fMP4).
+    # Stremio main.go też ich nie usuwa.
+    "content-encoding",  # upstream może wysłać gzip; httpx już zdekompresował
     "transfer-encoding",
     "connection",
     "keep-alive",
@@ -310,6 +312,7 @@ async def health() -> str:
 
 
 @app.get("/hls")
+@app.head("/hls")
 async def hls(u: str, h: str = "", request: Request = None) -> Response:
     """Zwraca playlistę HLS z przepisanymi linkami."""
     try:
@@ -354,7 +357,11 @@ async def hls(u: str, h: str = "", request: Request = None) -> Response:
         content=rewritten,
         status_code=200,
         media_type=_HLS_MIME,
-        headers={"Cache-Control": "no-store"},
+        headers={
+            "Cache-Control": "no-store",
+            # Cast SDK wymaga zapowiedzi Accept-Ranges juz na poziomie playlisty
+            "Accept-Ranges": "bytes",
+        },
     )
 
 
@@ -394,6 +401,13 @@ async def seg(u: str, h: str = "", request: Request = None) -> Response:
     media_type = out_headers.pop("content-type", None) or guess_content_type(
         url, upstream.headers.get("content-type")
     )
+
+    # DODANO: kluczowe dla Cast (shaka-player) - jeśli upstream nie ustawił
+    # Accept-Ranges, ustaw bytes ręcznie. Bez tego receiver odmawia byterange
+    # seek-a w fMP4-in-HLS, co skutkowalo 'Invalid Request' przy castowaniu
+    # ultrastream.online (HLS z .m4s segmentami).
+    if "accept-ranges" not in {k.lower() for k in out_headers}:
+        out_headers["Accept-Ranges"] = "bytes"
 
     if method == "HEAD":
         await upstream.aclose()
